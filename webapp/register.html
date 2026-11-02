@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registration</title>
+<!-- Telegram Mini App registration form, opened from the bot's "Open registration form" keyboard button.
+     It sends {"name", "email", "age"} back to the bot with Telegram.WebApp.sendData. The phone number is
+     never typed: requestContact() makes Telegram send the account's verified number to the bot. -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #1c1c1e);
+    --hint: var(--tg-theme-hint-color, #8e8e93);
+    --field: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --accent: var(--tg-theme-button-color, #2481cc);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --error: var(--tg-theme-destructive-text-color, #d93025);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.intro { margin: 0 0 20px; color: var(--hint); }
+  label { display: block; font-size: 14px; color: var(--hint); margin-bottom: 6px; }
+  input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--field);
+    color: var(--text);
+    font: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  input.invalid { border-color: var(--error); }
+  .field { margin-bottom: 16px; }
+  .error { min-height: 18px; margin-top: 4px; font-size: 13px; color: var(--error); }
+  button {
+    width: 100%;
+    padding: 12px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  .phone-status { margin-top: 6px; font-size: 14px; color: var(--hint); }
+  .phone-status.done { color: var(--accent); }
+  .notice { padding: 12px; border-radius: 10px; background: var(--field); color: var(--hint); font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <h1>Create your account</h1>
+  <p class="intro">Fill in your details and tap <b>Register</b>.</p>
+
+  <p class="notice" id="outside" hidden>Open this form from the bot's “Open registration form” button in Telegram.</p>
+
+  <form id="form" novalidate>
+    <div class="field">
+      <label for="name">Name</label>
+      <input id="name" autocomplete="name" placeholder="John Doe">
+      <div class="error" id="name-error"></div>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="john@example.com">
+      <div class="error" id="email-error"></div>
+    </div>
+    <div class="field">
+      <label for="age">Age</label>
+      <input id="age" inputmode="numeric" maxlength="2" placeholder="30">
+      <div class="error" id="age-error"></div>
+    </div>
+    <div class="field" id="phone-field">
+      <label>Phone number</label>
+      <button type="button" id="share-phone">📱 Share my phone</button>
+      <div class="phone-status" id="phone-status">Telegram shares the number of your account with the bot.</div>
+    </div>
+    <p class="notice" id="phone-later" hidden>The bot will ask for your phone number after you register.</p>
+  </form>
+
+<script>
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const insideTelegram = Boolean(tg && tg.initData);
+  const fields = ["name", "email", "age"].map(id => document.getElementById(id));
+  const [nameInput, emailInput, ageInput] = fields;
+
+  // same rules as DBHelper.validate_input_* in src/db/db_helper.py, the bot validates again
+  const rules = {
+    name: v => /^\p{L}+(\s+\p{L}+)*$/u.test(v) || "Use letters and spaces only.",
+    email: v => (v.includes("@") && v.split("@").pop().includes(".")) || "Enter a valid email.",
+    age: v => (/^\d+$/.test(v) && Number(v) > 5 && Number(v) < 100) || "Enter an age between 6 and 99.",
+  };
+
+  function errorOf(input) {
+    const result = rules[input.id](input.value.trim());
+    return result === true ? "" : result;
+  }
+
+  function isValid() {
+    return fields.every(input => errorOf(input) === "");
+  }
+
+  function showError(input) {
+    const error = input.value.trim() === "" ? "" : errorOf(input);  // don't flag a field the user hasn't filled
+    document.getElementById(input.id + "-error").textContent = error;
+    input.classList.toggle("invalid", error !== "");
+  }
+
+  function updateMainButton() {
+    if (!insideTelegram) return;
+    if (isValid()) tg.MainButton.enable(); else tg.MainButton.disable();
+  }
+
+  fields.forEach(input => {
+    input.addEventListener("input", () => { showError(input); updateMainButton(); });
+    input.addEventListener("blur", () => showError(input));
+  });
+
+  function submit() {
+    if (!isValid()) { fields.forEach(showError); return; }
+    // the phone is not in the payload: the bot keeps the verified contact Telegram sent
+    tg.sendData(JSON.stringify({
+      name: nameInput.value.trim(),
+      email: emailInput.value.trim(),
+      age: ageInput.value.trim(),
+    }));  // closes the Mini App
+  }
+
+  if (!insideTelegram) {
+    document.getElementById("outside").hidden = false;
+    document.getElementById("share-phone").disabled = true;
+  } else {
+    tg.ready();
+    tg.expand();
+    const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    if (user) nameInput.value = [user.first_name, user.last_name].filter(Boolean).join(" ");
+
+    tg.MainButton.setText("Register");
+    tg.MainButton.show();
+    tg.MainButton.onClick(submit);
+    updateMainButton();
+
+    if (tg.isVersionAtLeast("6.9")) {
+      const shareButton = document.getElementById("share-phone");
+      const status = document.getElementById("phone-status");
+      shareButton.addEventListener("click", () => {
+        tg.requestContact(shared => {
+          if (shared) {  // Telegram sent the contact to the bot as a message
+            shareButton.disabled = true;
+            status.textContent = "✓ Phone shared";
+            status.classList.add("done");
+          } else {
+            status.textContent = "Not shared. You can share it now, or the bot will ask after you register.";
+          }
+        });
+      });
+    } else {  // older clients can't request the contact from a Mini App
+      document.getElementById("phone-field").hidden = true;
+      document.getElementById("phone-later").hidden = false;
+    }
+  }
+</script>
+</body>
+</html>
