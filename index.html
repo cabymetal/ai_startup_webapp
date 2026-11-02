@@ -92,7 +92,9 @@
 
 <script>
   const tg = window.Telegram && window.Telegram.WebApp;
-  const insideTelegram = Boolean(tg && tg.initData);
+  // not tg.initData: it is empty when a Mini App is opened from a keyboard button, as the bot does.
+  // Outside Telegram the script still loads, but reports the platform as "unknown".
+  const insideTelegram = Boolean(tg && tg.platform && tg.platform !== "unknown");
   const fields = ["name", "email", "age"].map(id => document.getElementById(id));
   const [nameInput, emailInput, ageInput] = fields;
 
@@ -144,7 +146,7 @@
   } else {
     tg.ready();
     tg.expand();
-    const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    const user = tg.initDataUnsafe && tg.initDataUnsafe.user;  // empty from a keyboard button, kept for other launches
     if (user) nameInput.value = [user.first_name, user.last_name].filter(Boolean).join(" ");
 
     tg.MainButton.setText("Register");
